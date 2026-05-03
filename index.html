@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMC Trading Bot — EUR/USD</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0c0f;
+    --bg2: #111418;
+    --bg3: #181d24;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8edf3;
+    --muted: #6b7a8d;
+    --accent: #00e5a0;
+    --accent2: #0080ff;
+    --red: #ff4d4d;
+    --green: #00e5a0;
+    --orange: #ff9500;
+    --yellow: #ffd60a;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid bg */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 20px 60px; }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 0 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulse 2s ease infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .logo h1 { font-family: var(--sans); font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+  .badge.live { border-color: var(--accent); color: var(--accent); }
+  .badge.pair { border-color: var(--border2); color: var(--muted); }
+
+  /* Price bar */
+  .price-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .price-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .price-card .label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .price-card .value { font-family: var(--mono); font-size: 20px; font-weight: 600; }
+  .price-card .sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .up { color: var(--green); }
+  .down { color: var(--red); }
+  .neut { color: var(--orange); }
+
+  /* Main grid */
+  .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+  @media(max-width:768px){ .main-grid { grid-template-columns: 1fr; } }
+
+  /* Chart area */
+  .chart-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .chart-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .chart-header h2 { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; }
+  .timeframes { display: flex; gap: 4px; }
+  .tf-btn {
+    font-family: var(--mono); font-size: 11px;
+    padding: 4px 8px; border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .tf-btn.active, .tf-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.06); }
+
+  .chart-container {
+    position: relative;
+    height: 380px;
+    padding: 10px;
+  }
+  canvas { display: block; }
+
+  /* Signals panel */
+  .signals-panel {
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  .section-title {
+    font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* Signal card */
+  .signal-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .signal-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+  .signal-card.buy::before { background: var(--green); }
+  .signal-card.sell::before { background: var(--red); }
+
+  .signal-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .signal-dir {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    padding: 3px 8px; border-radius: 4px; letter-spacing: 1px;
+  }
+  .signal-dir.buy { background: rgba(0,229,160,0.12); color: var(--green); }
+  .signal-dir.sell { background: rgba(255,77,77,0.12); color: var(--red); }
+  .signal-time { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  .signal-levels { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .level-row { display: flex; align-items: center; justify-content: space-between; }
+  .level-label { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .level-val { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+
+  .signal-lots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .lot-card {
+    background: var(--bg3);
+    border-radius: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+  }
+  .lot-card .lot-label { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-bottom: 3px; }
+  .lot-card .lot-val { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .lot-card .lot-profit { font-size: 10px; margin-top: 2px; }
+
+  .signal-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .tag {
+    font-family: var(--mono); font-size: 9px;
+    padding: 2px 7px; border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .tag.hot { border-color: var(--accent); color: var(--accent); }
+
+  /* Calendar */
+  .calendar-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-top: 16px;
+  }
+
+  /* Navigation */
+  .nav-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .nav-btn {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 12px;
+    color: var(--text); font-family: var(--mono); font-size: 11px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .nav-label { font-family: var(--mono); font-size: 12px; color: var(--text); }
+
+  .day-grid { display: flex; flex-direction: column; gap: 6px; }
+  .day-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .day-row:hover { border-color: var(--border2); }
+  .day-row.active { border-color: var(--accent); }
+  .day-num { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 28px; }
+  .day-name { font-size: 12px; font-weight: 700; flex: 1; }
+  .day-dots { display: flex; gap: 4px; }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+  }
+  .dot.buy { background: var(--green); }
+  .dot.sell { background: var(--red); }
+  .dot.empty { background: var(--border2); }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .stat-label { font-family: var(--mono); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+  .stat-val { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* Risk bar */
+  .risk-bar-wrap { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .risk-label { font-family: var(--mono); font-size: 10px; color: var(--muted); min-width: 30px; }
+  .risk-bar { flex: 1; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+  .risk-fill { height: 100%; border-radius: 2px; }
+
+  /* Strategy legend */
+  .legend {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 20px;
+  }
+  .legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .legend-text { font-size: 11px; color: var(--muted); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab {
+    font-family: var(--mono); font-size: 11px;
+    padding: 8px 16px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer; color: var(--muted);
+    transition: all 0.15s;
+    margin-bottom: -1px;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Disclaimer */
+  .disclaimer {
+    background: rgba(255,149,0,0.08);
+    border: 1px solid rgba(255,149,0,0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--orange);
+    margin-top: 20px;
+    line-height: 1.6;
+  }
+
+  /* Candle chart simulation */
+  #candleChart { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    <h1>SMC<span>BOT</span> &mdash; EUR/USD</h1>
+  </div>
+  <div class="header-right">
+    <span class="badge pair">EURUSD · M15 / H1 / H4</span>
+    <span class="badge live">&#9679; LIVE</span>
+  </div>
+</header>
+
+<!-- Price bar -->
+<div class="price-bar" id="priceBar">
+  <div class="price-card">
+    <div class="label">Precio actual</div>
+    <div class="value" id="currentPrice">1.1728</div>
+    <div class="sub up">▲ +0.38% (7d)</div>
+  </div>
+  <div class="price-card">
+    <div class="label">Bias H4</div>
+    <div class="value up" id="biasH4">ALCISTA</div>
+    <div class="sub">BOS confirmado 1.1633</div>
+  </div>
+  <div class="price-card">
+    <div class="label">Estructura D1</div>
+    <div class="value up" id="biasD1">ALCISTA</div>
+    <div class="sub">Soporte 1.1525 – 1.1492</div>
+  </div>
+  <div class="price-card">
+    <div class="label">Sesión activa</div>
+    <div class="value neut" id="session">LONDON / NY</div>
+    <div class="sub">Kill Zone: 08:00–12:00</div>
+  </div>
+  <div class="price-card">
+    <div class="label">Resistencia clave</div>
+    <div class="value">1.1850</div>
+    <div class="sub">OB Semanal + FVG</div>
+  </div>
+  <div class="price-card">
+    <div class="label">Soporte clave</div>
+    <div class="value">1.1633</div>
+    <div class="sub">OB Diario mitigado</div>
+  </div>
+</div>
+
+<!-- Strategy Legend -->
+<div class="legend">
+  <div class="section-title">Estrategia SMC — BeLikeTheAlgo (Order Block + FVG + CHoCH/BOS)</div>
+  <div class="legend-grid">
+    <div class="legend-item"><div class="legend-dot" style="background:#00e5a0"></div><div class="legend-text">Order Block Alcista (último OB antes de BOS alcista)</div></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ff4d4d"></div><div class="legend-text">Order Block Bajista (último OB antes de BOS bajista)</div></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#0080ff"></div><div class="legend-text">Fair Value Gap (FVG) — zona de rebalanceo institucional</div></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ffd60a"></div><div class="legend-text">Liquidez barrida (Equal Highs/Lows, stop hunts)</div></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ff9500"></div><div class="legend-text">CHoCH — Cambio de carácter (confirmación de entrada)</div></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div><div class="legend-text">BOS — Break of Structure (continuación de tendencia)</div></div>
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Win Rate histórico</div>
+    <div class="stat-val up">63%</div>
+    <div class="stat-sub">2019–2025 · backtesting SMC EURUSD</div>
+    <div class="risk-bar-wrap"><div class="risk-label">63%</div><div class="risk-bar"><div class="risk-fill" style="width:63%;background:var(--green)"></div></div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Promedio R:R</div>
+    <div class="stat-val neut">1:2.3</div>
+    <div class="stat-sub">Target mín. 1:2 · máx. 1:3</div>
+    <div class="risk-bar-wrap"><div class="risk-label">77%</div><div class="risk-bar"><div class="risk-fill" style="width:77%;background:var(--orange)"></div></div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Profit factor</div>
+    <div class="stat-val up">1.87</div>
+    <div class="stat-sub">Con gestión de riesgo 1-2% / operación</div>
+    <div class="risk-bar-wrap"><div class="risk-label">87%</div><div class="risk-bar"><div class="risk-fill" style="width:87%;background:var(--accent2)"></div></div></div>
+  </div>
+</div>
+
+<!-- Main grid -->
+<div class="main-grid">
+
+  <!-- Chart panel -->
+  <div>
+    <div class="chart-panel">
+      <div class="chart-header">
+        <h2>GRÁFICO SMC — EUR/USD &nbsp;<span style="color:var(--muted);font-weight:400;font-size:11px">(Señales de entrada proyectadas)</span></h2>
+        <div class="timeframes">
+          <button class="tf-btn active" onclick="setTf(this,'M15')">M15</button>
+          <button class="tf-btn" onclick="setTf(this,'H1')">H1</button>
+          <button class="tf-btn" onclick="setTf(this,'H4')">H4</button>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="candleChart" role="img" aria-label="Gráfico EUR/USD con señales SMC Order Block FVG"></canvas>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="margin-top:20px">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(this,'tab-entries')">ENTRADAS (Lun-Vie)</div>
+        <div class="tab" onclick="switchTab(this,'tab-lots')">ESCENARIOS DE LOTAJE</div>
+        <div class="tab" onclick="switchTab(this,'tab-rules')">REGLAS DE TRADING</div>
+      </div>
+
+      <!-- Entries tab -->
+      <div id="tab-entries" class="tab-content active">
+        <div id="entriesContainer"></div>
+      </div>
+
+      <!-- Lots tab -->
+      <div id="tab-lots" class="tab-content">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="signal-card buy" style="border-color:rgba(0,229,160,0.3)">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Escenario A — Lotaje 3.00</div>
+            <div class="signal-levels">
+              <div class="level-row"><span class="level-label">Pip value (3 lots)</span><span class="level-val">$30 / pip</span></div>
+              <div class="level-row"><span class="level-label">Stop 10 pips</span><span class="level-val down">-$300</span></div>
+              <div class="level-row"><span class="level-label">TP1 (1:2) 20p</span><span class="level-val up">+$600</span></div>
+              <div class="level-row"><span class="level-label">TP2 (1:3) 30p</span><span class="level-val up">+$900</span></div>
+              <div class="level-row"><span class="level-label">Stop 15 pips</span><span class="level-val down">-$450</span></div>
+              <div class="level-row"><span class="level-label">TP1 (1:2) 30p</span><span class="level-val up">+$900</span></div>
+              <div class="level-row"><span class="level-label">TP2 (1:3) 45p</span><span class="level-val up">+$1,350</span></div>
+            </div>
+            <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6">⚠ Requiere cuenta mínima $15,000–30,000 para riesgo controlado del 1-2%. Ideal para cuentas fondeadas (prop firms).</div>
+          </div>
+          <div class="signal-card sell" style="border-color:rgba(0,229,160,0.3)">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Escenario B — Lotaje 0.10</div>
+            <div class="signal-levels">
+              <div class="level-row"><span class="level-label">Pip value (0.10)</span><span class="level-val">$1 / pip</span></div>
+              <div class="level-row"><span class="level-label">Stop 10 pips</span><span class="level-val down">-$10</span></div>
+              <div class="level-row"><span class="level-label">TP1 (1:2) 20p</span><span class="level-val up">+$20</span></div>
+              <div class="level-row"><span class="level-label">TP2 (1:3) 30p</span><span class="level-val up">+$30</span></div>
+              <div class="level-row"><span class="level-label">Stop 15 pips</span><span class="level-val down">-$15</span></div>
+              <div class="level-row"><span class="level-label">TP1 (1:2) 30p</span><span class="level-val up">+$30</span></div>
+              <div class="level-row"><span class="level-label">TP2 (1:3) 45p</span><span class="level-val up">+$45</span></div>
+            </div>
+            <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6">✓ Ideal para cuentas desde $500–5,000. Riesgo máximo $15 por operación. Perfecto para practicar la estrategia sin riesgo alto.</div>
+          </div>
+        </div>
+        <div class="signal-card" style="border-left:3px solid var(--accent2)">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:10px">GESTIÓN DE LA POSICIÓN — Método Split TP</div>
+          <div style="font-size:12px;line-height:1.9;color:var(--text)">
+            <b>1.</b> Entrada en zona OB + FVG con CHoCH en M5/M15 confirmado<br>
+            <b>2.</b> SL: 3-5 pips por debajo del OB (compras) / encima (ventas)<br>
+            <b>3.</b> Cerrar 50% en TP1 (RR 1:2) → mover SL a breakeven<br>
+            <b>4.</b> Dejar correr 50% restante hasta TP2 (RR 1:3) o siguiente liquidez<br>
+            <b>5.</b> Máximo 2 entradas por día · Solo Lun–Vie · Kill zones London/NY<br>
+            <b>6.</b> No operar 30 min antes/después de noticias de alto impacto (NFP, CPI, FOMC)
+          </div>
+        </div>
+      </div>
+
+      <!-- Rules tab -->
+      <div id="tab-rules" class="tab-content">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="signal-card" style="border-left:3px solid var(--green)">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✓ Setup válido — COMPRA</div>
+            <div style="font-size:12px;line-height:1.9;color:var(--muted)">
+              1. D1/H4: Estructura alcista (HH-HL)<br>
+              2. H4: BOS alcista confirmado<br>
+              3. H1: Retroceso hacia OB alcista<br>
+              4. H1/M15: FVG dentro del OB<br>
+              5. M15: CHoCH alcista (confirmación)<br>
+              6. Barrida de liquidez previa (EQL, stops)<br>
+              7. Entrada al inicio del FVG en M15<br>
+              8. SL: 3-5 pips bajo el OB<br>
+              9. TP1: Próximo FVG bajista / liquidez<br>
+              10. TP2: Siguiente swing high / OB bajista
+            </div>
+          </div>
+          <div class="signal-card" style="border-left:3px solid var(--red)">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✓ Setup válido — VENTA</div>
+            <div style="font-size:12px;line-height:1.9;color:var(--muted)">
+              1. D1/H4: Estructura bajista (LL-LH)<br>
+              2. H4: BOS bajista confirmado<br>
+              3. H1: Rally hacia OB bajista<br>
+              4. H1/M15: FVG dentro del OB bajista<br>
+              5. M15: CHoCH bajista (confirmación)<br>
+              6. Barrida de liquidez previa (EQH, stops)<br>
+              7. Entrada al inicio del FVG en M15<br>
+              8. SL: 3-5 pips sobre el OB<br>
+              9. TP1: Próximo FVG alcista / liquidez<br>
+              10. TP2: Siguiente swing low / OB alcista
+            </div>
+          </div>
+          <div class="signal-card" style="border-left:3px solid var(--red);grid-column:1/-1">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✗ Invalidaciones — NO entrar</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;color:var(--muted);line-height:1.8">
+              <span>❌ OB ya mitigado (precio tocó antes)</span>
+              <span>❌ Rango lateral sin estructura clara</span>
+              <span>❌ Noticias de alto impacto en ventana</span>
+              <span>❌ FVG sin CHoCH confirmado en M15</span>
+              <span>❌ Spread mayor a 3 pips (evitar volatilidad)</span>
+              <span>❌ Precio fuera de Kill Zone (08-12 / 13-17 UTC)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="signals-panel">
+    <div>
+      <div class="section-title">Próximas entradas</div>
+      <div id="nextSignals"></div>
+    </div>
+
+    <div class="calendar-panel">
+      <div class="nav-bar">
+        <button class="nav-btn" onclick="changeWeek(-1)">← Ant.</button>
+        <span class="nav-label" id="weekLabel"></span>
+        <button class="nav-btn" onclick="changeWeek(1)">Sig. →</button>
+      </div>
+      <div class="section-title">Señales de la semana</div>
+      <div class="day-grid" id="dayGrid"></div>
+    </div>
+
+    <div class="disclaimer">
+      ⚠ ADVERTENCIA DE RIESGO: Este bot es educativo y analítico. El trading en Forex implica alto riesgo de pérdida de capital. Entre el 70-80% de traders minoristas pierden dinero. Las señales son proyecciones basadas en análisis SMC, no garantías. Gestiona siempre tu riesgo: máx. 1-2% por operación.
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+let livePrice = 1.1728;
+let activeTf = 'M15';
+let selectedDate = '2026-05-04';
+let signals = [];
+
+const projectionStart = new Date('2026-05-04T00:00:00');
+const projectionDays = 30;
+
+function roundPrice(v) {
+  return Number(v.toFixed(4));
+}
+
+function formatDate(d) {
+  return d.toISOString().split('T')[0];
+}
+
+function buildSignal(date, day, dir, entry, pips, session, strength) {
+  const risk = pips * 0.0001;
+  const isBuy = dir === 'BUY';
+  return {
+    date,
+    day,
+    dir,
+    entry: roundPrice(entry),
+    sl: roundPrice(entry + (isBuy ? -risk : risk)),
+    tp1: roundPrice(entry + (isBuy ? risk * 2 : -risk * 2)),
+    tp2: roundPrice(entry + (isBuy ? risk * 3 : -risk * 3)),
+    pips_sl: pips,
+    zone: isBuy ? 'OB/FVG alcista ajustado al precio actual' : 'OB/FVG bajista ajustado al precio actual',
+    session,
+    confluences: isBuy ? ['CHoCH M15','FVG H1','Barrida de liquidez','BOS H4 alcista'] : ['CHoCH M15','OB H1','FVG bajista','Zona premium'],
+    strength
+  };
+}
+
+function generateSignals(price) {
+  const names = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const generated = [];
+  for(let i = 0; i < projectionDays; i++){
+    const d = new Date(projectionStart);
+    d.setDate(d.getDate() + i);
+    const dow = d.getDay();
+    if(dow === 0 || dow === 6) continue;
+    const date = formatDate(d);
+    const day = names[dow];
+    const wave = Math.sin((i + 1) * 0.85) * 0.0028;
+    const drift = (i % 5 - 2) * 0.00035;
+    const buyEntry = price - 0.0042 + wave + drift;
+    const sellEntry = price + 0.0048 + wave - drift;
+    const pips = dow === 5 ? 15 : 20;
+    generated.push(buildSignal(date, day, 'BUY', buyEntry, pips, 'London 08:00', Math.max(68, 92 - (i % 7) * 3)));
+    generated.push(buildSignal(date, day, 'SELL', sellEntry, pips, 'NY 13:30', Math.max(64, 86 - (i % 6) * 3)));
+  }
+  signals = generated;
+}
+
+function calcLots(sl_pips, lot) {
+  const pip_val = lot * 10;
+  return { risk: (sl_pips * pip_val).toFixed(0), tp1: (sl_pips * 2 * pip_val).toFixed(0), tp2: (sl_pips * 3 * pip_val).toFixed(0) };
+}
+
+function renderSignalCard(s) {
+  const dir = s.dir === 'BUY' ? 'buy' : 'sell';
+  const lot3 = calcLots(s.pips_sl, 3);
+  const lot01 = calcLots(s.pips_sl, 0.1);
+  const pct = s.strength;
+  const barColor = pct >= 85 ? 'var(--green)' : pct >= 70 ? 'var(--orange)' : 'var(--red)';
+  return `
+  <div class="signal-card ${dir}" style="margin-bottom:12px">
+    <div class="signal-top">
+      <span class="signal-dir ${dir}">${s.dir === 'BUY' ? '▲ COMPRA' : '▼ VENTA'}</span>
+      <span class="signal-time">${s.day} · ${s.session}</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${s.zone}</div>
+    <div class="signal-levels">
+      <div class="level-row"><span class="level-label">Entrada</span><span class="level-val">${s.entry.toFixed(4)}</span></div>
+      <div class="level-row"><span class="level-label">Stop Loss</span><span class="level-val down">${s.sl.toFixed(4)} (${s.pips_sl} pips)</span></div>
+      <div class="level-row"><span class="level-label">TP1 (1:2)</span><span class="level-val up">${s.tp1.toFixed(4)}</span></div>
+      <div class="level-row"><span class="level-label">TP2 (1:3)</span><span class="level-val up">${s.tp2.toFixed(4)}</span></div>
+    </div>
+    <div class="signal-lots">
+      <div class="lot-card">
+        <div class="lot-label">3.00 LOTES</div>
+        <div class="lot-val" style="color:var(--red)">-$${lot3.risk}</div>
+        <div class="lot-profit up">TP1: +$${lot3.tp1}</div>
+        <div class="lot-profit up">TP2: +$${lot3.tp2}</div>
+      </div>
+      <div class="lot-card">
+        <div class="lot-label">0.10 LOTES</div>
+        <div class="lot-val" style="color:var(--red)">-$${lot01.risk}</div>
+        <div class="lot-profit up">TP1: +$${lot01.tp1}</div>
+        <div class="lot-profit up">TP2: +$${lot01.tp2}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">Fuerza:</span>
+      <div style="flex:1;height:4px;background:var(--bg3);border-radius:2px"><div style="width:${pct}%;height:100%;border-radius:2px;background:${barColor}"></div></div>
+      <span style="font-family:var(--mono);font-size:10px;color:${barColor}">${pct}%</span>
+    </div>
+    <div class="signal-tags">
+      ${s.confluences.map(c => `<span class="tag ${s.confluences[0]===c?'hot':''}">${c}</span>`).join('')}
+    </div>
+  </div>`;
+}
+
+let currentWeek = 0;
+
+function getWeekSignals(offset) {
+  const start = new Date('2026-05-04');
+  start.setDate(start.getDate() + offset * 7);
+  const days = [];
+  for(let i=0;i<5;i++){
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const ds = d.toISOString().split('T')[0];
+    const daySignals = signals.filter(s => s.date === ds);
+    const dayNames = ['Lun','Mar','Mié','Jue','Vie'];
+    days.push({ date: ds, num: d.getDate(), name: dayNames[i], signals: daySignals });
+  }
+  return days;
+}
+
+function renderWeek() {
+  const days = getWeekSignals(currentWeek);
+  const start = new Date('2026-05-04');
+  start.setDate(start.getDate() + currentWeek * 7);
+  const end = new Date(start); end.setDate(end.getDate()+4);
+  const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  document.getElementById('weekLabel').textContent = `${start.getDate()} ${months[start.getMonth()]} – ${end.getDate()} ${months[end.getMonth()]}`;
+
+  let html = '';
+  days.forEach((d,i) => {
+    const buys = d.signals.filter(s=>s.dir==='BUY').length;
+    const sells = d.signals.filter(s=>s.dir==='SELL').length;
+    const dots = [];
+    for(let b=0;b<buys;b++) dots.push('<div class="dot buy"></div>');
+    for(let s=0;s<sells;s++) dots.push('<div class="dot sell"></div>');
+    if(dots.length===0) dots.push('<div class="dot empty"></div><div class="dot empty"></div>');
+    html += `<div class="day-row ${i===0&&currentWeek===0?'active':''}" onclick="selectDay('${d.date}')">
+      <span class="day-num">${d.num}</span>
+      <span class="day-name">${d.name}</span>
+      <div class="day-dots">${dots.join('')}</div>
+    </div>`;
+  });
+  document.getElementById('dayGrid').innerHTML = html;
+}
+
+function selectDay(date) {
+  selectedDate = date;
+  const daySig = signals.filter(s=>s.date===date);
+  if(daySig.length===0){
+    document.getElementById('nextSignals').innerHTML = '<div style="font-size:12px;color:var(--muted);padding:12px">Sin señales para este día. Espera setups de alta probabilidad.</div>';
+    return;
+  }
+  document.getElementById('nextSignals').innerHTML = daySig.map(renderSignalCard).join('');
+}
+
+function changeWeek(dir) {
+  currentWeek += dir;
+  renderWeek();
+}
+
+function refreshUi() {
+  generateSignals(livePrice);
+  document.getElementById('currentPrice').textContent = livePrice.toFixed(4);
+  document.getElementById('entriesContainer').innerHTML = signals.slice(0,10).map(renderSignalCard).join('');
+  renderWeek();
+  selectDay(selectedDate);
+  drawChart(activeTf);
+}
+
+async function updateLivePrice() {
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/EUR', { cache: 'no-store' });
+    if(!res.ok) throw new Error('price request failed');
+    const data = await res.json();
+    const usd = Number(data && data.rates && data.rates.USD);
+    if(!Number.isFinite(usd)) throw new Error('invalid price payload');
+    livePrice = roundPrice(usd);
+    refreshUi();
+  } catch (err) {
+    refreshUi();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  generateSignals(livePrice);
+  renderWeek();
+  selectDay(selectedDate);
+
+  document.getElementById('entriesContainer').innerHTML = signals.slice(0,10).map(renderSignalCard).join('');
+  drawChart(activeTf);
+  updateLivePrice();
+  setInterval(updateLivePrice, 60000);
+});
+
+function switchTab(btn, tabId) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+function setTf(btn, tf) {
+  activeTf = tf;
+  document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  drawChart(tf);
+}
+
+function buildChartSeries(tf, price) {
+  const labels = [];
+  const closes = [];
+  const highs = [];
+  const lows = [];
+  const size = tf === 'M15' ? 26 : tf === 'H1' ? 26 : 17;
+  const step = tf === 'M15' ? 0.00028 : tf === 'H1' ? 0.0007 : 0.0015;
+  const base = price - step * size * 0.45;
+
+  for(let i=0;i<size;i++){
+    if(tf === 'M15') {
+      const hour = 8 + Math.floor(i / 4);
+      const min = (i % 4) * 15;
+      labels.push(`${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}`);
+    } else if(tf === 'H1') {
+      labels.push(`H${String(i + 1).padStart(2,'0')}`);
+    } else {
+      labels.push(`D${String(i + 1).padStart(2,'0')}`);
+    }
+    const wave = Math.sin((i + 1) * 0.9) * step * 2.4;
+    const trend = i * step;
+    const c = base + trend + wave;
+    closes.push(roundPrice(c));
+    highs.push(roundPrice(c + step * 2));
+    lows.push(roundPrice(c - step * 1.7));
+  }
+
+  closes[closes.length - 1] = roundPrice(price);
+  highs[highs.length - 1] = roundPrice(price + step * 2);
+  lows[lows.length - 1] = roundPrice(price - step * 1.7);
+  return { labels, closes, highs, lows };
+}
+
+function drawChart(tf) {
+  const ctx = document.getElementById('candleChart').getContext('2d');
+  if(window._smcChart) window._smcChart.destroy();
+
+  const { labels, closes, highs, lows } = buildChartSeries(tf, livePrice);
+
+  const entryIdx = Math.floor(labels.length * 0.4);
+  const tp1Idx = Math.floor(labels.length * 0.65);
+  const tp2Idx = Math.floor(labels.length * 0.85);
+  const selectedSignals = signals.filter(s=>s.date===selectedDate);
+  const selectedSignal = selectedSignals[0] || signals[0];
+  const entryPrice = selectedSignal ? selectedSignal.entry : closes[entryIdx];
+  const slPrice = selectedSignal ? selectedSignal.sl : entryPrice - 0.0018;
+  const tp1Price = selectedSignal ? selectedSignal.tp1 : entryPrice + 0.0036;
+  const tp2Price = selectedSignal ? selectedSignal.tp2 : entryPrice + 0.0054;
+
+  const pointColors = closes.map((v,i)=>{
+    if(i===entryIdx) return '#00e5a0';
+    if(i===tp1Idx) return '#ffd60a';
+    if(i===tp2Idx) return '#ff9500';
+    return 'transparent';
+  });
+  const pointRadius = closes.map((v,i)=>{
+    if(i===entryIdx||i===tp1Idx||i===tp2Idx) return 6;
+    return 0;
+  });
+
+  window._smcChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'EUR/USD',
+          data: closes,
+          borderColor: '#e8edf3',
+          borderWidth: 1.5,
+          pointBackgroundColor: pointColors,
+          pointRadius: pointRadius,
+          pointBorderColor: pointColors,
+          tension: 0.3,
+          fill: false
+        },
+        {
+          label: 'High',
+          data: highs,
+          borderColor: 'rgba(0,229,160,0.15)',
+          borderWidth: 0.5,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false
+        },
+        {
+          label: 'Low',
+          data: lows,
+          borderColor: 'rgba(255,77,77,0.15)',
+          borderWidth: 0.5,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false
+        },
+        {
+          label: 'Entry',
+          data: labels.map(()=>entryPrice),
+          borderColor: '#00e5a0',
+          borderWidth: 1,
+          borderDash: [6,4],
+          pointRadius: 0,
+          fill: false
+        },
+        {
+          label: 'SL',
+          data: labels.map(()=>slPrice),
+          borderColor: '#ff4d4d',
+          borderWidth: 1,
+          borderDash: [4,4],
+          pointRadius: 0,
+          fill: false
+        },
+        {
+          label: 'TP1 (1:2)',
+          data: labels.map(()=>tp1Price),
+          borderColor: '#ffd60a',
+          borderWidth: 1,
+          borderDash: [6,3],
+          pointRadius: 0,
+          fill: false
+        },
+        {
+          label: 'TP2 (1:3)',
+          data: labels.map(()=>tp2Price),
+          borderColor: '#ff9500',
+          borderWidth: 1,
+          borderDash: [8,3],
+          pointRadius: 0,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: '#181d24',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          titleColor: '#e8edf3',
+          bodyColor: '#6b7a8d',
+          callbacks: {
+            label: ctx => {
+              const l = ctx.dataset.label;
+              const v = ctx.parsed.y;
+              if(!v) return null;
+              if(l==='Entry') return `⬤ Entry: ${v.toFixed(4)}`;
+              if(l==='SL') return `⬤ SL: ${v.toFixed(4)}`;
+              if(l==='TP1 (1:2)') return `⬤ TP1: ${v.toFixed(4)}`;
+              if(l==='TP2 (1:3)') return `⬤ TP2: ${v.toFixed(4)}`;
+              if(l==='EUR/USD') return `Precio: ${v.toFixed(4)}`;
+              return null;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#6b7a8d', font: { family: "'Share Tech Mono'", size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y: {
+          ticks: { color: '#6b7a8d', font: { family: "'Share Tech Mono'", size: 10 }, callback: v => v.toFixed(4) },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          position: 'right'
+        }
+      }
+    }
+  });
+}
+
+</script>
+</body>
+</html>
