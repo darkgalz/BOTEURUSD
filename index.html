@@ -32,11 +32,13 @@
   --orb:'Orbitron',sans-serif;
 }
 
-html,body{
+html{height:100%;}
+body{
   background:var(--bg);
   color:var(--text);
   font-family:var(--mono);
-  height:100vh;
+  height:100%;
+  max-height:100vh;
   overflow:hidden;
   display:flex;
   flex-direction:column;
@@ -115,7 +117,7 @@ html,body{
 .sess-off{color:var(--muted);}
 
 /* ══════════════ LAYOUT ══════════════ */
-#main{flex:1;display:grid;grid-template-columns:210px 1fr 275px;overflow:hidden;min-height:0;}
+#main{flex:1;min-height:0;display:grid;grid-template-columns:210px 1fr 275px;overflow:hidden;}
 
 /* ══════════════ LEFT ══════════════ */
 #left{
@@ -172,10 +174,9 @@ html,body{
 #center{
   display:flex;
   flex-direction:column;
-  overflow:hidden;
   background:var(--bg);
+  overflow:hidden;
   min-height:0;
-  max-height:100%;
 }
 
 /* Center top bar */
@@ -207,13 +208,14 @@ html,body{
 /* ══ SCENARIO PANELS ══ */
 #scenarios{
   flex:1;
-  overflow-y:auto;
+  min-height:0;
+  overflow-y:scroll;
   overflow-x:hidden;
   padding:14px;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  min-height:0;
+}
+#scenarios > *{
+  margin-bottom:14px;
+  display:block;
 }
 
 /* Day header */
@@ -500,21 +502,21 @@ html,body{
 // DATA
 // ═══════════════════════════════════════════════════════
 var PAIRS = {
-  EURUSD:{name:'EUR/USD',bigL:5,smL:0.10,digs:4,pip:0.0001,pipV:10,base:1.1728,col:'#00e5a0',
+  EURUSD:{name:'EUR/USD',bigL:5,smL:0.10,digs:4,pip:0.0001,pipV:10,base:1.1716,col:'#00e5a0',
     bias:'ALCISTA',biasT:'BOS H4 confirmado 1.1633. Estructura HH-HL activa en H4. OB diario zona 1.1611–1.1633. FVG H1 sin mitigar en 1.1670. Resistencia mayor 1.1850.',
-    lvls:[{n:'Soporte D1',v:1.1633,c:'#00e5a0'},{n:'OB H4',v:1.1611,c:'#00e5a0'},{n:'FVG H1',v:1.1670,c:'#2979ff'},{n:'Resist H4',v:1.1850,c:'#ff3355'}]},
-  XAUUSD:{name:'XAU/USD',bigL:3,smL:0.10,digs:2,pip:0.1,pipV:1,base:3281,col:'#ffd000',
-    bias:'ALCISTA',biasT:'Oro en tendencia alcista desde $2,800. OB H4 $3,200–$3,220. FVG H1 $3,240–$3,255. Resist $3,380. Soporte geopolítico activo.',
-    lvls:[{n:'OB H4',v:3220,c:'#00e5a0'},{n:'FVG H1',v:3255,c:'#2979ff'},{n:'Resist',v:3380,c:'#ff3355'},{n:'Objetivo',v:3500,c:'#ff8f00'}]},
-  AUDUSD:{name:'AUD/USD',bigL:5,smL:0.10,digs:4,pip:0.0001,pipV:10,base:0.6434,col:'#9c42f5',
-    bias:'LATERAL/ALCISTA',biasT:'Rango H4 activo. OB H4 zona 0.6380–0.6400. FVG H1 0.6410. Bias semanal alcista sobre 0.6350. Commodities soportan AUD.',
-    lvls:[{n:'OB H4',v:0.6380,c:'#00e5a0'},{n:'FVG H1',v:0.6412,c:'#2979ff'},{n:'Resist',v:0.6520,c:'#ff3355'},{n:'Objetivo',v:0.6580,c:'#ff8f00'}]},
-  NAS100:{name:'NAS100',bigL:3,smL:0.10,digs:1,pip:1,pipV:1,base:19255,col:'#2979ff',
+    lvls:[{n:'Soporte D1',v:1.1633,c:'#00e5a0'},{n:'OB H4',v:1.1611,c:'#00e5a0'},{n:'FVG H1',v:1.1680,c:'#2979ff'},{n:'Resist H4',v:1.1849,c:'#ff3355'}]},
+  XAUUSD:{name:'XAU/USD',bigL:3,smL:0.10,digs:2,pip:0.1,pipV:1,base:4608,col:'#ffd000',
+    bias:'ALCISTA',biasT:'Oro alcista por encima de $4,600. OB H4 $4,560–$4,575. FVG H1 $4,588. Bloqueo naval de Irán sostiene precio. Resist $4,700. Objetivo $4,800.',
+    lvls:[{n:'OB H4',v:4560,c:'#00e5a0'},{n:'FVG H1',v:4588,c:'#2979ff'},{n:'Resist',v:4700,c:'#ff3355'},{n:'Objetivo',v:4800,c:'#ff8f00'}]},
+  AUDUSD:{name:'AUD/USD',bigL:5,smL:0.10,digs:4,pip:0.0001,pipV:10,base:0.7208,col:'#9c42f5',
+    bias:'ALCISTA',biasT:'AUD/USD empujando norte de 0.7200. BOS H4 alcista. OB H4 zona 0.7160–0.7185. FVG H1 sin mitigar. Commodities australianos fuertes.',
+    lvls:[{n:'OB H4',v:0.7160,c:'#00e5a0'},{n:'FVG H1',v:0.7185,c:'#2979ff'},{n:'Resist',v:0.7280,c:'#ff3355'},{n:'Objetivo',v:0.7350,c:'#ff8f00'}]},
+  NAS100:{name:'NAS100',bigL:3,smL:0.10,digs:1,pip:1,pipV:1,base:19258,col:'#2979ff',
     bias:'ALCISTA',biasT:'NASDAQ BOS diario sobre 18,800. OB H4 19,050. FVG H1 19,100–19,180. Tech sector lidera. Resist 19,800.',
-    lvls:[{n:'OB H4',v:19050,c:'#00e5a0'},{n:'FVG H1',v:19180,c:'#2979ff'},{n:'Resist',v:19800,c:'#ff3355'},{n:'Objetivo',v:20200,c:'#ff8f00'}]},
-  US30:{name:'US30',bigL:3,smL:0.10,digs:1,pip:1,pipV:1,base:40870,col:'#ff8f00',
-    bias:'ALCISTA',biasT:'DOW JONES consolidando. OB H4 40,200–40,400. FVG H1 40,600. Resist 41,500.',
-    lvls:[{n:'OB H4',v:40400,c:'#00e5a0'},{n:'FVG H1',v:40650,c:'#2979ff'},{n:'Resist',v:41500,c:'#ff3355'},{n:'Objetivo',v:42000,c:'#ff8f00'}]}
+    lvls:[{n:'OB H4',v:19100,c:'#00e5a0'},{n:'FVG H1',v:19200,c:'#2979ff'},{n:'Resist',v:19600,c:'#ff3355'},{n:'Objetivo',v:20000,c:'#ff8f00'}]},
+  US30:{name:'US30',bigL:3,smL:0.10,digs:1,pip:1,pipV:1,base:49500,col:'#ff8f00',
+    bias:'ALCISTA',biasT:'DOW JONES en 49,500. BOS H4 alcista. OB H4 zona 49,200–49,350. Apple +3.26% y Salesforce +4.13% liderando. Resist 49,800. Objetivo 50,500.',
+    lvls:[{n:'OB H4',v:49200,c:'#00e5a0'},{n:'FVG H1',v:49350,c:'#2979ff'},{n:'Resist',v:49800,c:'#ff3355'},{n:'Objetivo',v:50500,c:'#ff8f00'}]}
 };
 
 var curPair='EURUSD', curTF='H1', weekOff=0, selDay=null, live={}, allSigs=[], cdVal=30, viewMode='single';
