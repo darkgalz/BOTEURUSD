@@ -255,7 +255,7 @@ body{
 
 /* Levels strip */
 .levels-strip{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+  display:grid;grid-template-columns:repeat(5,1fr);gap:0;
   border-bottom:1px solid var(--border);
 }
 .lstrip-item{
@@ -494,13 +494,21 @@ body{
   <span id="sb-tf">H1</span>
   <span id="sb-upd">--</span>
   <span id="sb-sigs">--</span>
-  <span style="margin-left:auto;color:var(--bg5)">SMCPro · BeLikeTheAlgo Strategy · OB + FVG + CHoCH</span>
+  <span id="api-status" style="color:var(--green);font-size:8px">⬤ Conectando...</span><span style="margin-left:auto;color:var(--bg5)">SMCPro · BeLikeTheAlgo Strategy · OB + FVG + CHoCH</span>
 </div>
 
 <script>
 // ═══════════════════════════════════════════════════════
 // DATA
 // ═══════════════════════════════════════════════════════
+// Safe local date constructor (avoids UTC timezone offset bug)
+function mkDate(y,m,d){ return new Date(y,m-1,d); }
+function dateStr(dt){ 
+  return dt.getFullYear()+'-'
+    +String(dt.getMonth()+1).padStart(2,'0')+'-'
+    +String(dt.getDate()).padStart(2,'0');
+}
+
 var PAIRS = {
   EURUSD:{name:'EUR/USD',bigL:5,smL:0.10,digs:4,pip:0.0001,pipV:10,base:1.1716,col:'#00e5a0',
     bias:'ALCISTA',biasT:'BOS H4 confirmado 1.1633. Estructura HH-HL activa en H4. OB diario zona 1.1611–1.1633. FVG H1 sin mitigar en 1.1670. Resistencia mayor 1.1850.',
@@ -538,87 +546,212 @@ function srng(seed){
 // SIGNAL GENERATION
 // ═══════════════════════════════════════════════════════
 function genSigs(pk, wo){
-  var cfg=PAIRS[pk];
-  var base=new Date('2026-05-04');
-  base.setDate(base.getDate()+wo*7);
-  var days=['Lunes','Martes','Miércoles','Jueves','Viernes'];
-  // 3 sessions — Tokio KZ 00-03, London KZ 08-12, NY KZ 13-17
-  var sess=[
-    {name:'TOKIO',   time:'00:30 – 02:30 UTC', kz:'00–03 UTC'},
-    {name:'LONDON',  time:'08:30 – 10:30 UTC', kz:'08–12 UTC'},
-    {name:'NEW YORK',time:'13:30 – 15:30 UTC', kz:'13–17 UTC'}
+  var cfg  = PAIRS[pk];
+  var lpx  = live[pk] ? live[pk].px : cfg.base;
+  var pip  = cfg.pip;
+
+  // ATR base H1 in pips/points — scaled by current TF
+  var atrBase = {EURUSD:8,XAUUSD:6,AUDUSD:8,NAS100:25,US30:60}[pk]||10;
+  var tfScale  = (TF_CFG && TF_CFG[curTF]) ? TF_CFG[curTF].pipMult : 1.0;
+  var atrH1    = atrBase * tfScale;
+  // Entry distance also scales with TF
+  var retrocesoPct = curTF==="1D"?0.008 : curTF==="H4"?0.005 : curTF==="H1"?0.003 :
+                     curTF==="M30"?0.002 : curTF==="M15"?0.0015 :
+                     curTF==="M5"?0.001  : curTF==="M3"?0.0008 : 0.0006;
+
+  var baseDate = mkDate(2026,5,4);
+  baseDate.setDate(baseDate.getDate() + wo*7);
+  var days = ["Lunes","Martes","Miercoles","Jueves","Viernes"];
+
+  var sess = [
+    {name:"TOKIO",    time:"00:30 - 02:30 UTC"},
+    {name:"LONDON",   time:"08:30 - 10:30 UTC"},
+    {name:"NEW YORK", time:"13:30 - 15:30 UTC"}
   ];
-  var zones=['OB H4 + FVG H1 sin mitigar','OB H1 premium + FVG M15','OB Diario + FVG H4','FVG H4 + CHoCH H1 confirmado','OB H1 limpio + FVG M15'];
-  var tagsets=[
-    ['CHoCH M15','FVG H1','BOS H4','Liquidity Sweep EQL'],
-    ['OB limpio','FVG H1','Kill Zone','CHoCH confirmado'],
-    ['CHoCH H1','OB H4','FVG bajista','Stop Hunt previo'],
-    ['BOS alcista H1','OB H1','FVG M15','Equal Lows barridos']
+  var zones = [
+    "OB H4 + FVG H1 sin mitigar",
+    "OB H1 premium + FVG M15",
+    "OB Diario + FVG H4",
+    "FVG H4 + CHoCH H1 confirmado",
+    "OB H1 limpio + FVG M15",
+    "FVG M15 + CHoCH M5 Scalp",
+    "Equal Highs barridos + OB H1"
   ];
-  var hash=pk.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0)+wo*137;
-  var out=[];
+  var tagsets = [
+    ["CHoCH M15","FVG H1","BOS H4","Liquidity Sweep"],
+    ["OB limpio H4","FVG H1","Kill Zone","CHoCH confirmado"],
+    ["CHoCH H1","OB H4","FVG bajista","Stop Hunt previo"],
+    ["BOS alcista H1","OB H1","FVG M15","EQL barridos"],
+    ["CHoCH M5","FVG M15","OB H1","Scalp KZ"],
+    ["OB D1","FVG H4","BOS H1","Sesion overlap"]
+  ];
+
+  var hash = pk.split("").reduce(function(a,ch){return a+ch.charCodeAt(0);},0) + wo*137;
+  var out  = [];
+
   for(var d=0;d<5;d++){
-    var dt=new Date(base);dt.setDate(dt.getDate()+d);
-    var ds=dt.toISOString().split('T')[0];
-    // Generate all 3 sessions but only keep best 2 (highest strength)
-    var daySigs=[];
+    var dt = new Date(baseDate); dt.setDate(dt.getDate()+d);
+    var ds = dateStr(dt);
+    var daySigs = [];
+
     for(var si=0;si<3;si++){
-      var s=hash+d*11+si*7;
-      // Tokio session: less bias (more neutral/corrective), LDN+NY follow HTF bias
-      var isBuy;
-      if(si===0){ // Tokio — often counter-trend scalp
-        isBuy=srng(s)>0.48;
-      } else {
-        isBuy=cfg.bias==='ALCISTA'?srng(s)>0.33:srng(s)>0.57;
-      }
-      var dir=isBuy?'BUY':'SELL';
-      var lv=cfg.lvls;
-      var eBase=isBuy?lv[0].v+(lv[1].v-lv[0].v)*srng(s*3):lv[2].v-(lv[2].v-lv[1].v)*srng(s*5)*0.4;
-      var pips=Math.floor(12+srng(s*9)*14);
-      var dist=pips*cfg.pip;
-      var e=parseFloat(eBase.toFixed(cfg.digs));
-      var sl=parseFloat((isBuy?e-dist:e+dist).toFixed(cfg.digs));
-      var tp1=parseFloat((isBuy?e+dist*2:e-dist*2).toFixed(cfg.digs));
-      var tp2=parseFloat((isBuy?e+dist*3:e-dist*3).toFixed(cfg.digs));
-      // Tokio signals slightly lower strength
-      var str=si===0?Math.floor(55+srng(s*13)*25):Math.floor(65+srng(s*13)*29);
+      var s = hash + d*11 + si*7;
+      var rnd = srng(s);
+
+      // Direction: follow HTF bias (London/NY), neutral scalp (Tokio)
+      var bullProb = cfg.bias==="ALCISTA" ? (si===0?0.52:0.65) :
+                     cfg.bias==="BAJISTA" ? (si===0?0.48:0.32) : 0.50;
+      var isBuy = rnd < bullProb;
+      var dir   = isBuy ? "BUY" : "SELL";
+
+      // Entry: LIVE price +/- retrace scaled to current TF
+      var retPct  = retrocesoPct + srng(s*3)*retrocesoPct*0.8;
+      var retDist = lpx * retPct;
+      var jitter  = retDist * (srng(s*5) - 0.5) * 0.4;
+      var e = isBuy ? lpx - retDist + jitter : lpx + retDist + jitter;
+      e = parseFloat(e.toFixed(cfg.digs));
+
+      // SL: based on ATR H1 of the pair (realistic broker SL)
+      var atrMult = 0.8 + srng(s*11)*0.6;
+      var slDist  = atrH1 * pip * atrMult;
+      var sl  = parseFloat((isBuy ? e - slDist : e + slDist).toFixed(cfg.digs));
+      var tp1 = parseFloat((isBuy ? e + slDist*2 : e - slDist*2).toFixed(cfg.digs));
+      var tp2 = parseFloat((isBuy ? e + slDist*3 : e - slDist*3).toFixed(cfg.digs));
+      var pips = Math.round(Math.abs(e - sl) / pip);
+
+      var baseStr = si===0 ? 58 : 68;
+      var str = Math.min(96, Math.floor(baseStr + srng(s*13)*28));
+      if(cfg.bias==="ALCISTA" && isBuy  && si>0) str = Math.min(96, str+7);
+      if(cfg.bias==="BAJISTA" && !isBuy && si>0) str = Math.min(96, str+7);
+
       daySigs.push({
-        date:ds,day:days[d],dir:dir,entry:e,sl:sl,tp1:tp1,tp2:tp2,pips:pips,
-        session:sess[si].name,time:sess[si].time,kz:sess[si].kz,str:str,
+        date:ds, day:days[d], dir:dir, entry:e, sl:sl, tp1:tp1, tp2:tp2, pips:pips,
+        session:sess[si].name, time:sess[si].time, str:str,
+        liveRef:parseFloat(lpx.toFixed(cfg.digs)),
         zone:zones[Math.floor(srng(s*17)*zones.length)],
         tags:tagsets[Math.floor(srng(s*19)*tagsets.length)]
       });
     }
-    // Sort by strength desc, take top 2
     daySigs.sort(function(a,b){return b.str-a.str;});
-    out.push(daySigs[0],daySigs[1]);
+    out.push(daySigs[0], daySigs[1]);
   }
   return out;
 }
+
 
 // ═══════════════════════════════════════════════════════
 // P&L
 // ═══════════════════════════════════════════════════════
 function calcPnL(pk, lot, pips){
-  var cfg=PAIRS[pk];
-  var pv=(cfg.base<2||cfg.base<1)?10*lot:(cfg.base<5000?10*lot:lot);
-  return {risk:(pips*pv).toFixed(2),tp1:(pips*2*pv).toFixed(2),tp2:(pips*3*pv).toFixed(2)};
+  // Pip value per lot (broker standard):
+  // Forex: $10/pip per lot  |  Gold: $10/pip per lot  |  Indices: $1/point per lot
+  var pv = (pk==="NAS100"||pk==="US30") ? lot : 10*lot;
+  var risk = parseFloat((pips*pv).toFixed(2));
+  return { risk:risk.toFixed(2), tp1:(risk*2).toFixed(2), tp2:(risk*3).toFixed(2) };
 }
 
 // ═══════════════════════════════════════════════════════
 // LIVE PRICES
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// LIVE PRICES — Multi-source real-time fetch
+// Sources: freeforexapi (forex) + Binance (XAU via XAUUSDT)
+//          + Yahoo Finance proxy (indices)
+// Falls back to micro-tick simulation if API fails
+// ═══════════════════════════════════════════════════════
+var apiStatus = {ok:false, src:'—', lastFetch:'—'};
+
 function initLive(){
-  Object.keys(PAIRS).forEach(function(k){live[k]={px:PAIRS[k].base};});
+  Object.keys(PAIRS).forEach(function(k){ live[k]={px:PAIRS[k].base}; });
 }
-function tickPrices(){
-  Object.keys(PAIRS).forEach(function(k){
+
+// ── Fetch FOREX pairs from freeforexapi.com (no key, CORS open) ──
+function fetchForex(){
+  var pairs = 'EURUSD,AUDUSD';
+  fetch('https://www.freeforexapi.com/api/live?pairs='+pairs)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d && d.rates){
+        if(d.rates.EURUSD) setLive('EURUSD', d.rates.EURUSD.rate);
+        if(d.rates.AUDUSD) setLive('AUDUSD', d.rates.AUDUSD.rate);
+        apiStatus.ok=true; apiStatus.src='freeforexapi'; apiStatus.lastFetch=new Date().toLocaleTimeString('es');
+        updateApiStatus();
+      }
+    }).catch(function(){ microTick(['EURUSD','AUDUSD']); });
+}
+
+// ── Fetch XAU/USD from Binance public REST (no key, CORS open) ──
+function fetchGold(){
+  fetch('https://api.binance.com/api/v3/ticker/price?symbol=XAUUSDT')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d && d.price){
+        setLive('XAUUSD', parseFloat(d.price));
+        apiStatus.ok=true;
+      }
+    }).catch(function(){ microTick(['XAUUSD']); });
+}
+
+// ── Fetch Indices via Yahoo Finance v8 (no-cors proxy fallback) ──
+// We use allorigins.win as a CORS proxy to fetch Yahoo Finance
+function fetchIndex(symbol, pairKey){
+  var url = 'https://query1.finance.yahoo.com/v8/finance/chart/'+symbol+'?interval=1m&range=1d';
+  var proxy = 'https://api.allorigins.win/raw?url='+encodeURIComponent(url);
+  fetch(proxy)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      try{
+        var meta = d.chart.result[0].meta;
+        var px = meta.regularMarketPrice || meta.previousClose;
+        if(px) setLive(pairKey, px);
+      }catch(e){ microTick([pairKey]); }
+    }).catch(function(){ microTick([pairKey]); });
+}
+
+function setLive(key, price){
+  var cfg = PAIRS[key];
+  live[key].px = parseFloat(parseFloat(price).toFixed(cfg.digs));
+}
+
+// ── Micro-tick: tiny realistic simulation as fallback ──
+function microTick(keys){
+  (keys||Object.keys(PAIRS)).forEach(function(k){
     var cfg=PAIRS[k];
-    var vol=cfg.base*0.00012;
-    live[k].px=parseFloat((live[k].px+(Math.random()-0.495)*vol).toFixed(cfg.digs));
+    var vol=cfg.base*0.000055;
+    live[k].px=parseFloat((live[k].px+(Math.random()-0.499)*vol).toFixed(cfg.digs));
   });
+}
+
+// ── Status badge ──
+function updateApiStatus(){
+  var el=document.getElementById("api-status");
+  if(el) el.textContent = apiStatus.ok ? "⬤ LIVE " + apiStatus.src + " · " + apiStatus.lastFetch : "⬤ Sim (sin conexión API)";
+}
+
+// ── Master tick: fetch real + simulate tick on all ──
+function tickPrices(){
+  // Always apply micro drift (smooth movement between fetches)
+  microTick(null);
   renderTicker();
   renderCtop();
+}
+
+// ── Full price fetch every 5 seconds ──
+function fetchAllPrices(){
+  fetchForex();
+  fetchGold();
+  fetchIndex('^NDX','NAS100');
+  fetchIndex('^DJI','US30');
+  // Regenerate signals with new live prices after fetch
+  setTimeout(function(){
+    allSigs = genSigs(curPair, weekOff);
+    if(viewMode==="all") renderAllPairs(selDay);
+    else renderScenarios(allSigs, selDay);
+    renderRightCards(allSigs, selDay);
+    renderTicker();
+    renderCtop();
+    updateApiStatus();
+  }, 1200);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -700,14 +833,14 @@ function renderLevels(){
 // RENDER: WEEK STRIP
 // ═══════════════════════════════════════════════════════
 function renderWeekStrip(sigs){
-  var base=new Date('2026-05-04');base.setDate(base.getDate()+weekOff*7);
+  var base=mkDate(2026,5,4);base.setDate(base.getDate()+weekOff*7);
   var end=new Date(base);end.setDate(end.getDate()+4);
   var mns=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  document.getElementById('wkLbl').textContent=base.getDate()+' '+mns[base.getMonth()]+' – '+end.getDate()+' '+mns[end.getMonth()];
+  document.getElementById('wkLbl').textContent=base.getDate()+' '+mns[base.getMonth()]+' – '+end.getDate()+' '+mns[end.getMonth()]+' 2026';
   var dns=['L','M','X','J','V'],h='';
   for(var i=0;i<5;i++){
     var dt=new Date(base);dt.setDate(dt.getDate()+i);
-    var ds=dt.toISOString().split('T')[0];
+    var ds=dateStr(dt);
     var ds2=sigs.filter(function(s){return s.date===ds;});
     var buys=ds2.filter(function(s){return s.dir==='BUY';}).length;
     var sells=ds2.filter(function(s){return s.dir==='SELL';}).length;
@@ -787,6 +920,13 @@ function renderScenarios(sigs, day){
           +'<div class="lsi-label">🔵 Entrada</div>'
           +'<div class="lsi-val" style="color:var(--cyan)">'+s.entry.toFixed(cfg.digs)+'</div>'
           +'<div class="lsi-sub">Zona OB + FVG</div>'
+        +'</div>'
+        +'<div class="lstrip-item" style="border-bottom:2px solid var(--muted)">'
+          +'<div class="lsi-label">📡 Precio Live</div>'
+          +'<div class="lsi-val" style="color:var(--text)">'+s.liveRef+'</div>'
+          +'<div class="lsi-sub" style="color:'+(s.dir==="BUY"?"var(--green)":"var(--red)")+'">'
+            +(s.dir==="BUY"?"Retroceso ▼ "+((s.liveRef-s.entry)/cfg.pip).toFixed(0)+"p":"Extensión ▲ "+((s.entry-s.liveRef)/cfg.pip).toFixed(0)+"p")
+          +'</div>'
         +'</div>'
         +'<div class="lstrip-item">'
           +'<div class="lsi-label">🔴 Stop Loss</div>'
@@ -1046,7 +1186,7 @@ function renderAllPairs(day){
         // Signal top
         +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
           +'<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;'+(isBuy?'background:rgba(0,229,160,.13);color:var(--green)':'background:rgba(255,51,85,.13);color:var(--red)')+'">'+(isBuy?'▲ BUY':'▼ SELL')+'</span>'
-          +'<span style="font-size:8px;padding:2px 7px;border-radius:3px;background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'40;">'+s.session+'</span>'
+          +'<span style="font-size:8px;padding:2px 7px;border-radius:3px;background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'40;">'+s.session+'</span>'+'<span style="font-size:8px;padding:2px 7px;border-radius:3px;background:rgba(255,255,255,0.05);color:var(--muted);margin-left:3px;">'+curTF+'</span>'
           +'<span style="font-size:8px;color:var(--muted);margin-left:auto;">'+s.time+'</span>'
         +'</div>'
 
@@ -1136,9 +1276,9 @@ function refresh(){
   allSigs=genSigs(curPair,weekOff);
   // Always start on Monday of the current week
   if(!selDay){
-    var _wb=new Date('2026-05-04');
+    var _wb=mkDate(2026,5,4);
     _wb.setDate(_wb.getDate()+weekOff*7);
-    selDay=_wb.toISOString().split('T')[0];
+    selDay=dateStr(_wb);
   }
   renderWeekStrip(allSigs);
   if(viewMode==='all') renderAllPairs(selDay);
@@ -1158,25 +1298,45 @@ function doRefresh(){cdVal=30;document.getElementById('ct-cd').textContent='30s'
 // SELECTORS
 // ═══════════════════════════════════════════════════════
 function selPair(p){
-  curPair=p;selDay=null;
-  document.querySelectorAll('.pb').forEach(function(b){b.classList.remove('on');});
-  document.getElementById('pb_'+p).classList.add('on');
-  doRefresh();
+  curPair=p; selDay=null;
+  document.querySelectorAll(".pb").forEach(function(b){b.classList.remove("on");});
+  document.getElementById("pb_"+p).classList.add("on");
+  // Fetch fresh prices for new pair then refresh
+  fetchAllPrices();
+  setTimeout(function(){ doRefresh(); }, 800);
 }
+var TF_CFG = {
+  "1D": {atrMult:4.0, label:"Diario",  pipMult:8.0},
+  "H4": {atrMult:2.5, label:"4 Horas", pipMult:4.0},
+  "H1": {atrMult:1.0, label:"1 Hora",  pipMult:1.0},
+  "M30":{atrMult:0.7, label:"30 Min",  pipMult:0.6},
+  "M15":{atrMult:0.5, label:"15 Min",  pipMult:0.4},
+  "M5": {atrMult:0.3, label:"5 Min",   pipMult:0.25},
+  "M3": {atrMult:0.2, label:"3 Min",   pipMult:0.18},
+  "M1": {atrMult:0.15,label:"1 Min",   pipMult:0.12}
+};
 function selTF(t,el){
-  curTF=t;
+  curTF = t;
   document.querySelectorAll('.tf').forEach(function(b){b.classList.remove('on');});
   el.classList.add('on');
-  document.getElementById('sb-tf').textContent=t;
-  document.getElementById('ct-tf').textContent=t+' · SMC Order Block + FVG + CHoCH';
+  document.getElementById('sb-tf').textContent = t;
+  document.getElementById('ct-tf').textContent = t + ' · SMC OB+FVG+CHoCH · ' + (TF_CFG[t] ? TF_CFG[t].label : '');
+  // Regenerate signals with TF-scaled SL/entry distances
+  allSigs = genSigs(curPair, weekOff);
+  if(viewMode==='all') renderAllPairs(selDay);
+  else renderScenarios(allSigs, selDay);
+  renderRightCards(allSigs, selDay);
 }
+
 function selDay(d){
   selDay=d;
+  // Regenerate with latest live prices when switching day
+  allSigs=genSigs(curPair,weekOff);
   renderWeekStrip(allSigs);
-  if(viewMode==='all') renderAllPairs(d);
+  if(viewMode==="all") renderAllPairs(d);
   else renderScenarios(allSigs,d);
   renderRightCards(allSigs,d);
-  document.getElementById('sb-sigs').textContent='Señales: '+allSigs.filter(function(s){return s.date===d;}).length;
+  document.getElementById("sb-sigs").textContent="Señales: "+allSigs.filter(function(s){return s.date===d;}).length;
 }
 function chWeek(dir){weekOff+=dir;selDay=null;doRefresh();}
 
@@ -1188,9 +1348,15 @@ window.addEventListener('load',function(){
   renderTicker();
   renderClocks();
   refresh();
+  // Fetch real prices immediately
+  fetchAllPrices();
   setInterval(renderClocks,1000);
   setInterval(renderSessions,10000);
-  setInterval(tickPrices,3000);
+  // Micro tick every 2s for smooth movement
+  setInterval(tickPrices,2000);
+  // Real fetch every 5s
+  setInterval(fetchAllPrices,5000);
+  // Countdown + signal refresh every 30s
   setInterval(function(){
     cdVal--;
     document.getElementById('ct-cd').textContent=cdVal+'s';
