@@ -527,7 +527,7 @@ var PAIRS = {
     lvls:[{n:'OB H4',v:49200,c:'#00e5a0'},{n:'FVG H1',v:49350,c:'#2979ff'},{n:'Resist',v:49800,c:'#ff3355'},{n:'Objetivo',v:50500,c:'#ff8f00'}]}
 };
 
-var curPair='EURUSD', curTF='H1', weekOff=0, selDay=null, live={}, allSigs=[], cdVal=30, viewMode='single';
+var curPair='EURUSD', curTF='H1', weekOff=0, curDay=null, live={}, allSigs=[], cdVal=30, viewMode='single';
 
 var sessColors={
   'TOKIO':   '#9c42f5',
@@ -559,8 +559,10 @@ function genSigs(pk, wo){
                      curTF==="M30"?0.002 : curTF==="M15"?0.0015 :
                      curTF==="M5"?0.001  : curTF==="M3"?0.0008 : 0.0006;
 
-  var baseDate = mkDate(2026,5,4);
-  baseDate.setDate(baseDate.getDate() + wo*7);
+  // Use real current week as base when wo=0
+  var _gn = new Date();
+  var _gnMon = new Date(_gn); _gnMon.setDate(_gn.getDate()-((_gn.getDay()+6)%7));
+  var baseDate = wo===0 ? _gnMon : (function(){var b=new Date(_gnMon);b.setDate(b.getDate()+wo*7);return b;})();
   var days = ["Lunes","Martes","Miercoles","Jueves","Viernes"];
 
   var sess = [
@@ -745,9 +747,9 @@ function fetchAllPrices(){
   // Regenerate signals with new live prices after fetch
   setTimeout(function(){
     allSigs = genSigs(curPair, weekOff);
-    if(viewMode==="all") renderAllPairs(selDay);
-    else renderScenarios(allSigs, selDay);
-    renderRightCards(allSigs, selDay);
+    if(viewMode==="all") renderAllPairs(curDay);
+    else renderScenarios(allSigs, curDay);
+    renderRightCards(allSigs, curDay);
     renderTicker();
     renderCtop();
     updateApiStatus();
@@ -833,7 +835,13 @@ function renderLevels(){
 // RENDER: WEEK STRIP
 // ═══════════════════════════════════════════════════════
 function renderWeekStrip(sigs){
-  var base=mkDate(2026,5,4);base.setDate(base.getDate()+weekOff*7);
+  // Base = Monday of current real week when weekOff=0
+  var _now = new Date();
+  var _mondayOffset = (_now.getDay()+6)%7; // days since last Monday
+  var _thisMonday = new Date(_now); _thisMonday.setDate(_now.getDate()-_mondayOffset);
+  var base = weekOff===0 ? _thisMonday : (function(){
+    var b=new Date(_thisMonday); b.setDate(b.getDate()+weekOff*7); return b;
+  })();
   var end=new Date(base);end.setDate(end.getDate()+4);
   var mns=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   document.getElementById('wkLbl').textContent=base.getDate()+' '+mns[base.getMonth()]+' – '+end.getDate()+' '+mns[end.getMonth()]+' 2026';
@@ -848,9 +856,9 @@ function renderWeekStrip(sigs){
     for(var b=0;b<buys;b++) dots+='<div class="wdot" style="background:var(--green)"></div>';
     for(var sv=0;sv<sells;sv++) dots+='<div class="wdot" style="background:var(--red)"></div>';
     if(!dots) dots='<div class="wdot" style="background:var(--bg5)"></div>';
-    h+='<div class="wd '+(ds===selDay?'on':'')+'" onclick="selDay(\''+ds+'\')">'
+    h+='<div class="wd '+(ds===curDay?'on':'')+'" onclick="selDay(\''+ds+'\')">'
       +'<div class="wd-n">'+dns[i]+'</div>'
-      +'<div class="wd-d" style="color:'+(ds===selDay?'var(--cyan)':'')+'">'+dt.getDate()+'</div>'
+      +'<div class="wd-d" style="color:'+(ds===curDay?'var(--cyan)':'')+'">'+dt.getDate()+'</div>'
       +'<div class="wd-dots">'+dots+'</div></div>';
   }
   document.getElementById('wkStrip').innerHTML=h;
@@ -1121,8 +1129,8 @@ function setView(v){
   viewMode=v;
   document.getElementById('btn-single').classList.toggle('on',v==='single');
   document.getElementById('btn-all').classList.toggle('on',v==='all');
-  if(v==='all') renderAllPairs(selDay);
-  else renderScenarios(allSigs,selDay);
+  if(v==='all') renderAllPairs(curDay);
+  else renderScenarios(allSigs,curDay);
 }
 
 function renderAllPairs(day){
@@ -1275,21 +1283,33 @@ function buildMiniProj(s,cfg,isBuy){
 function refresh(){
   allSigs=genSigs(curPair,weekOff);
   // Always start on Monday of the current week
-  if(!selDay){
+  if(!curDay){
+    // Default to today if today is a weekday, else next Monday
+    var _today = new Date();
+    var _dow   = _today.getDay(); // 0=Sun, 1=Mon...5=Fri, 6=Sat
+    var _todayStr = dateStr(_today);
+    // Check if today falls within the current week offset
     var _wb=mkDate(2026,5,4);
     _wb.setDate(_wb.getDate()+weekOff*7);
-    selDay=dateStr(_wb);
+    var _wbStr = dateStr(_wb);
+    var _we = new Date(_wb); _we.setDate(_we.getDate()+4);
+    var _weStr = dateStr(_we);
+    if(_todayStr >= _wbStr && _todayStr <= _weStr && _dow>=1 && _dow<=5){
+      curDay = _todayStr; // today is within this week and is a weekday
+    } else {
+      curDay = _wbStr; // fallback to Monday of the displayed week
+    }
   }
   renderWeekStrip(allSigs);
-  if(viewMode==='all') renderAllPairs(selDay);
-  else renderScenarios(allSigs,selDay);
-  renderRightCards(allSigs,selDay);
+  if(viewMode==='all') renderAllPairs(curDay);
+  else renderScenarios(allSigs,curDay);
+  renderRightCards(allSigs,curDay);
   renderLevels();
   renderSessions();
   renderCtop();
   var now=new Date();
   document.getElementById('sb-upd').textContent='Actualizado: '+now.toLocaleTimeString('es');
-  document.getElementById('sb-sigs').textContent='Señales: '+(selDay?allSigs.filter(function(s){return s.date===selDay;}).length:0);
+  document.getElementById('sb-sigs').textContent='Señales: '+(curDay?allSigs.filter(function(s){return s.date===curDay;}).length:0);
 }
 
 function doRefresh(){cdVal=30;document.getElementById('ct-cd').textContent='30s';refresh();}
@@ -1298,7 +1318,7 @@ function doRefresh(){cdVal=30;document.getElementById('ct-cd').textContent='30s'
 // SELECTORS
 // ═══════════════════════════════════════════════════════
 function selPair(p){
-  curPair=p; selDay=null;
+  curPair=p; curDay=null;
   document.querySelectorAll(".pb").forEach(function(b){b.classList.remove("on");});
   document.getElementById("pb_"+p).classList.add("on");
   // Fetch fresh prices for new pair then refresh
@@ -1323,13 +1343,13 @@ function selTF(t,el){
   document.getElementById('ct-tf').textContent = t + ' · SMC OB+FVG+CHoCH · ' + (TF_CFG[t] ? TF_CFG[t].label : '');
   // Regenerate signals with TF-scaled SL/entry distances
   allSigs = genSigs(curPair, weekOff);
-  if(viewMode==='all') renderAllPairs(selDay);
-  else renderScenarios(allSigs, selDay);
-  renderRightCards(allSigs, selDay);
+  if(viewMode==='all') renderAllPairs(curDay);
+  else renderScenarios(allSigs, curDay);
+  renderRightCards(allSigs, curDay);
 }
 
 function selDay(d){
-  selDay=d;
+  curDay=d;
   // Regenerate with latest live prices when switching day
   allSigs=genSigs(curPair,weekOff);
   renderWeekStrip(allSigs);
@@ -1338,7 +1358,7 @@ function selDay(d){
   renderRightCards(allSigs,d);
   document.getElementById("sb-sigs").textContent="Señales: "+allSigs.filter(function(s){return s.date===d;}).length;
 }
-function chWeek(dir){weekOff+=dir;selDay=null;doRefresh();}
+function chWeek(dir){weekOff+=dir;curDay=null;doRefresh();}
 
 // ═══════════════════════════════════════════════════════
 // BOOT
